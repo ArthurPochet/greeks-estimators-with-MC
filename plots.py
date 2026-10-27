@@ -53,8 +53,8 @@ def tracer_erreur_vs_temps(temps, erreurs, option_type="call"):
         plt.figure(figsize=(6, 4.5))
         for (methode, greek), valeurs in erreurs.items():
             if greek == nom:
-                _courbe(temps[methode], valeurs, methode)
-        plt.xlabel("Temps de calcul par estimation (s)")
+                _courbe(temps[(methode, greek)], valeurs, methode)
+        plt.xlabel("Temps de calcul du " + nom + " seul (s)")
         plt.ylabel("Erreur RMS")
         plt.title("Erreur du " + nom + " selon le temps de calcul (" + option_type + ")")
         plt.legend()
@@ -62,15 +62,19 @@ def tracer_erreur_vs_temps(temps, erreurs, option_type="call"):
         _sauver("erreur_vs_temps_" + nom + "_" + option_type + ".png")
 
 
-def tracer_erreur_vs_h(res, option_type="call"):
+def tracer_erreur_vs_h(res, option_type="call", pas_choisis=None):
     """Une figure par Greek : erreur RMS du bump en fonction du pas h.
-    L'etoile marque le pas optimal (erreur minimale)."""
+    L'etoile marque le pas retenu par la regle de choix (pas_choisis[(methode, greek)]) ;
+    sans pas_choisis, le pas qui realise le minimum exact."""
     for nom in GREEKS_DES_BUMPS:
         plt.figure(figsize=(6, 4.5))
         for methode in ["bump_independant", "bump_commun"]:
             grille, valeurs = res[(methode, nom)]
             _courbe(grille, valeurs, methode)
-            i = int(np.argmin(valeurs))
+            if pas_choisis is not None:
+                i = list(grille).index(pas_choisis[(methode, nom)])
+            else:
+                i = int(np.argmin(valeurs))
             plt.plot(grille[i], valeurs[i], "*", markersize=16,
                      color=COULEURS[methode], markeredgecolor="black")
         plt.xlabel("Pas h")
@@ -84,17 +88,36 @@ def tracer_erreur_vs_h(res, option_type="call"):
 GREEKS_DES_BUMPS = ["delta", "gamma", "vega", "theta", "rho"]
 
 
-def tracer_temps(liste_M, temps, option_type="call"):
-    """Temps de calcul moyen par estimation en fonction de M."""
+def tracer_temps(liste_M, temps, option_type="call", greek="delta"):
+    """Temps de calcul (median) d'un Greek seul en fonction de M. Le delta sert de
+    reference : les quatre methodes le donnent. Les temps des autres Greeks sont
+    dans resultats/temps_<option>.csv."""
     plt.figure(figsize=(6, 4.5))
-    for methode, valeurs in temps.items():
-        _courbe(liste_M, valeurs, methode)
+    for (methode, g), valeurs in temps.items():
+        if g == greek:
+            _courbe(liste_M, valeurs, methode)
     plt.xlabel("Nombre de trajectoires M")
-    plt.ylabel("Temps par estimation (s)")
-    plt.title("Temps de calcul (" + option_type + ")")
+    plt.ylabel("Temps du " + greek + " seul (s)")
+    plt.title("Temps de calcul du " + greek + " (" + option_type + ")")
     plt.legend()
     plt.grid(True, which="both", alpha=0.3)
     _sauver("temps_" + option_type + ".png")
+
+
+def tracer_h_vs_M(liste_M, pas, option_type="call"):
+    """Pas h retenu en fonction de M, une figure par methode de bump, une courbe par Greek.
+    pas[(methode, greek, M)] = h. Pour le bump independant, la theorie prevoit h* en M^(-1/6)."""
+    for methode in ["bump_independant", "bump_commun"]:
+        plt.figure(figsize=(6, 4.5))
+        for greek in GREEKS_DES_BUMPS:
+            plt.loglog(liste_M, [pas[(methode, greek, M)] for M in liste_M],
+                       marker="o", label=greek)
+        plt.xlabel("Nombre de trajectoires M")
+        plt.ylabel("Pas h retenu")
+        plt.title("Pas h retenu selon M : " + methode + " (" + option_type + ")")
+        plt.legend()
+        plt.grid(True, which="both", alpha=0.3)
+        _sauver("h_vs_M_" + methode + "_" + option_type + ".png")
 
 
 def tracer_lr(res, option_type, balayage, titre_x):
@@ -109,7 +132,7 @@ def tracer_lr(res, option_type, balayage, titre_x):
             x = [a for a, _ in points]
             y = [b for _, b in points]
             marqueur, trait = STYLES[methode]
-            tracer = plt.loglog if balayage == ("sigma", "T") else plt.semilogy
+            tracer = plt.loglog if balayage in ("sigma", "T") else plt.semilogy
             tracer(x, y, marker=marqueur, linestyle=trait, label=methode,
                    color=COULEURS[methode])
         plt.xlabel(titre_x)
