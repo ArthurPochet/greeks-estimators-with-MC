@@ -1,0 +1,120 @@
+"""Graphiques des experiences (echelles log-log)."""
+import os
+
+import matplotlib
+matplotlib.use("Agg")          # ecrit les images dans des fichiers
+import matplotlib.pyplot as plt
+import numpy as np
+
+DOSSIER = "figures"
+COULEURS = {"bump_independant": "tab:red", "bump_commun": "tab:blue",
+            "pathwise": "tab:green", "likelihood_ratio": "tab:orange"}
+# styles differents pour que deux courbes superposees restent visibles
+STYLES = {"bump_independant": ("o", "-"), "bump_commun": ("o", "-"),
+          "pathwise": ("s", "--"), "likelihood_ratio": ("^", "-")}
+
+
+def _sauver(nom_fichier):
+    os.makedirs(DOSSIER, exist_ok=True)
+    plt.tight_layout()
+    plt.savefig(os.path.join(DOSSIER, nom_fichier), dpi=150)
+    plt.close()
+
+
+def _courbe(x, y, methode):
+    marqueur, trait = STYLES[methode]
+    plt.loglog(x, y, marker=marqueur, linestyle=trait, label=methode,
+               color=COULEURS[methode])
+
+
+def tracer_erreur_vs_M(liste_M, erreurs, option_type="call"):
+    """Une figure par Greek : erreur RMS en fonction de M.
+    La droite pointillee a pour pente -1/2 (erreur proportionnelle a 1/racine(M))."""
+    for nom in sorted({g for (_, g) in erreurs}):
+        plt.figure(figsize=(6, 4.5))
+        for (methode, greek), valeurs in erreurs.items():
+            if greek == nom:
+                _courbe(liste_M, valeurs, methode)
+        M = np.array(liste_M)
+        reference = min(v[0] for (_, g), v in erreurs.items() if g == nom)
+        plt.loglog(M, reference * np.sqrt(M[0] / M), "k:", label="pente -1/2")
+        plt.xlabel("Nombre de trajectoires M")
+        plt.ylabel("Erreur RMS")
+        plt.title("Erreur RMS du " + nom + " en fonction de M (" + option_type + ")")
+        plt.legend()
+        plt.grid(True, which="both", alpha=0.3)
+        _sauver("erreur_vs_M_" + nom + "_" + option_type + ".png")
+
+
+def tracer_erreur_vs_temps(temps, erreurs, option_type="call"):
+    """Une figure par Greek : erreur RMS en fonction du temps de calcul.
+    A temps egal, la courbe la plus basse est la meilleure methode."""
+    for nom in sorted({g for (_, g) in erreurs}):
+        plt.figure(figsize=(6, 4.5))
+        for (methode, greek), valeurs in erreurs.items():
+            if greek == nom:
+                _courbe(temps[methode], valeurs, methode)
+        plt.xlabel("Temps de calcul par estimation (s)")
+        plt.ylabel("Erreur RMS")
+        plt.title("Erreur du " + nom + " selon le temps de calcul (" + option_type + ")")
+        plt.legend()
+        plt.grid(True, which="both", alpha=0.3)
+        _sauver("erreur_vs_temps_" + nom + "_" + option_type + ".png")
+
+
+def tracer_erreur_vs_h(res, option_type="call"):
+    """Une figure par Greek : erreur RMS du bump en fonction du pas h.
+    L'etoile marque le pas optimal (erreur minimale)."""
+    for nom in GREEKS_DES_BUMPS:
+        plt.figure(figsize=(6, 4.5))
+        for methode in ["bump_independant", "bump_commun"]:
+            grille, valeurs = res[(methode, nom)]
+            _courbe(grille, valeurs, methode)
+            i = int(np.argmin(valeurs))
+            plt.plot(grille[i], valeurs[i], "*", markersize=16,
+                     color=COULEURS[methode], markeredgecolor="black")
+        plt.xlabel("Pas h")
+        plt.ylabel("Erreur RMS du " + nom)
+        plt.title("Bump : erreur du " + nom + " en fonction de h (" + option_type + ")")
+        plt.legend()
+        plt.grid(True, which="both", alpha=0.3)
+        _sauver("erreur_vs_h_" + nom + "_" + option_type + ".png")
+
+
+GREEKS_DES_BUMPS = ["delta", "gamma", "vega", "theta", "rho"]
+
+
+def tracer_temps(liste_M, temps, option_type="call"):
+    """Temps de calcul moyen par estimation en fonction de M."""
+    plt.figure(figsize=(6, 4.5))
+    for methode, valeurs in temps.items():
+        _courbe(liste_M, valeurs, methode)
+    plt.xlabel("Nombre de trajectoires M")
+    plt.ylabel("Temps par estimation (s)")
+    plt.title("Temps de calcul (" + option_type + ")")
+    plt.legend()
+    plt.grid(True, which="both", alpha=0.3)
+    _sauver("temps_" + option_type + ".png")
+
+
+def tracer_lr(res, option_type, balayage, titre_x):
+    """Erreur relative du pathwise et du likelihood ratio, en fonction de la
+    variable du balayage (sigma*racine(T) ou strike K). balayage = 'sigma' ou 'strike'."""
+    for nom in ["delta", "gamma", "vega", "rho"]:
+        plt.figure(figsize=(6, 4.5))
+        for methode in ["pathwise", "likelihood_ratio"]:
+            if (methode, nom) not in res:
+                continue
+            points = res[(methode, nom)]
+            x = [a for a, _ in points]
+            y = [b for _, b in points]
+            marqueur, trait = STYLES[methode]
+            tracer = plt.loglog if balayage == ("sigma", "T") else plt.semilogy
+            tracer(x, y, marker=marqueur, linestyle=trait, label=methode,
+                   color=COULEURS[methode])
+        plt.xlabel(titre_x)
+        plt.ylabel("Erreur RMS relative")
+        plt.title("Erreur relative du " + nom + " (" + option_type + ")")
+        plt.legend()
+        plt.grid(True, which="both", alpha=0.3)
+        _sauver("lr_" + balayage + "_" + nom + "_" + option_type + ".png")
